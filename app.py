@@ -9,8 +9,17 @@ from typing import Optional
 
 import pandas as pd
 import streamlit as st
-from folium import Map, Marker
-from folium.plugins import MarkerCluster
+
+try:
+    from folium import Map, Marker
+    from folium.plugins import MarkerCluster
+except ModuleNotFoundError as exc:
+    st.error(
+        "A biblioteca Folium não está instalada. Verifique se o arquivo "
+        "requirements.txt inclui 'folium' e reinstale as dependências."
+    )
+    st.stop()
+
 from streamlit_folium import st_folium
 
 
