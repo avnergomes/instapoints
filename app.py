@@ -30,17 +30,28 @@ def carregar_dados(arquivo_subido: io.BytesIO) -> Optional[pd.DataFrame]:
         return None
 
     try:
-        if arquivo_subido.type in ("text/csv", "application/vnd.ms-excel", "application/octet-stream"):
-            # Alguns navegadores enviam XLSX como application/octet-stream
-            return pd.read_csv(arquivo_subido)
+        nome_arquivo = getattr(arquivo_subido, "name", "")
+        extensao = nome_arquivo.split(".")[-1].lower() if "." in nome_arquivo else ""
 
-        if arquivo_subido.type in (
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ):
-            return pd.read_excel(arquivo_subido, engine="openpyxl")
+        conteudo = arquivo_subido.getvalue()
+        buffer = io.BytesIO(conteudo)
 
-        # Caso a extensão não seja conhecida, tentamos ler como CSV.
-        return pd.read_csv(arquivo_subido)
+        if extensao == "xlsx":
+            return pd.read_excel(buffer, engine="openpyxl")
+
+        if extensao == "csv":
+            buffer.seek(0)
+            return pd.read_csv(buffer)
+
+        # Se a extensão for desconhecida, tentamos primeiro como CSV e, em caso de
+        # falha, como XLSX para cobrir cenários em que o usuário enviou o arquivo
+        # correto, porém sem extensão ou com um tipo MIME inesperado.
+        try:
+            buffer.seek(0)
+            return pd.read_csv(buffer)
+        except Exception:
+            buffer.seek(0)
+            return pd.read_excel(buffer, engine="openpyxl")
 
     except Exception as exc:  # Captura qualquer falha de leitura.
         st.error(f"Não foi possível ler o arquivo enviado. Detalhes: {exc}")
@@ -68,7 +79,14 @@ def construir_mapa(dados: pd.DataFrame) -> Map:
 
     # Normaliza nomes das colunas para acessar independentemente de caixa.
     dados = dados.rename(columns=str.lower)
+    dados["latitude"] = pd.to_numeric(dados["latitude"], errors="coerce")
+    dados["longitude"] = pd.to_numeric(dados["longitude"], errors="coerce")
     dados = dados.dropna(subset=["latitude", "longitude"])
+
+    if dados.empty:
+        raise ValueError(
+            "Não há registros válidos após remover linhas sem latitude/longitude."
+        )
 
     # Calcula o centro a partir da média das coordenadas.
     centro = [dados["latitude"].mean(), dados["longitude"].mean()]
@@ -111,7 +129,11 @@ def main() -> None:
     if not validar_colunas(dados):
         return
 
-    mapa = construir_mapa(dados)
+    try:
+        mapa = construir_mapa(dados)
+    except ValueError as erro:
+        st.warning(str(erro))
+        return
 
     st_folium(mapa, width=1000, height=600)
 
