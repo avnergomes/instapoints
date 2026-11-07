@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 try:
-    from folium import Map, Marker
+    from folium import Map, Marker, TileLayer
     from folium.plugins import MarkerCluster
 except ModuleNotFoundError as exc:
     st.error(
@@ -100,7 +100,19 @@ def construir_mapa(dados: pd.DataFrame) -> Map:
     # Calcula o centro a partir da média das coordenadas.
     centro = [dados["latitude"].mean(), dados["longitude"].mean()]
 
-    mapa = Map(location=centro, zoom_start=4, tiles="CartoDB positron")
+    # Os tiles gratuitos do Carto passaram a devolver a imagem "API KEY REQUIRED".
+    # Canvas do Esri, sem chave: base clara e rótulos por cima, com dados até o zoom 16.
+    mapa = Map(location=centro, zoom_start=4, tiles=None)
+    for servico, sobreposicao in (("Base", False), ("Reference", True)):
+        TileLayer(
+            "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/"
+            f"World_Light_Gray_{servico}/MapServer/tile/{{z}}/{{y}}/{{x}}",
+            attr="Esri, HERE, Garmin, © OpenStreetMap contributors",
+            name=f"Esri Light Gray {servico}",
+            overlay=sobreposicao,
+            control=False,
+            max_native_zoom=16,
+        ).add_to(mapa)
 
     marcador_cluster = MarkerCluster(name="Pontos").add_to(mapa)
     for _, linha in dados.iterrows():
